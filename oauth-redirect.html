@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>サインイン処理中</title>
+<style>
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    text-align: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+</style>
+</head>
+<body>
+<p id="message">アプリに戻っています…</p>
+<script>
+  // Androidアプリからの外部ブラウザ経由サインインの中継専用ページ。
+  // Web版(メモ帳.html)のGoogleサインインはこのページを経由しない。
+  var ANDROID_SCHEME = 'com.fujiwara.memo';
+
+  var params = new URLSearchParams(window.location.search);
+  var code = params.get('code');
+  var state = params.get('state');
+  var error = params.get('error');
+  var messageEl = document.getElementById('message');
+
+  if (error) {
+    messageEl.textContent = 'サインインがキャンセルされました。このタブを閉じてアプリに戻ってください。';
+  } else if (code) {
+    var target = ANDROID_SCHEME + '://oauth2redirect?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state || '');
+    window.location.href = target;
+    messageEl.textContent = 'アプリに戻っています…自動で戻らない場合はこのタブを閉じて、アプリを開き直してください。';
+  } else {
+    messageEl.textContent = '不正なアクセスです。';
+  }
+</script>
+</body>
+</html>
