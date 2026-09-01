@@ -846,6 +846,19 @@
 
   window.addEventListener('online', () => { if (pendingDriveUpload) flushDriveSync(); });
 
+  // アプリ/タブが再びフォアグラウンドに来たタイミングで、Drive側の最新内容を取り直す
+  // (他端末での編集を都度取り込むため。アプリを起動しっぱなしのままだと気づけないケースをカバーする)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && accessToken && syncState !== 'syncing') {
+      loadFromDriveOnStartup();
+    }
+  });
+  window.addEventListener('focus', () => {
+    if (accessToken && syncState !== 'syncing') {
+      loadFromDriveOnStartup();
+    }
+  });
+
   signInBtn.addEventListener('click', signIn);
   signOutBtn.addEventListener('click', signOut);
   syncNowBtn.addEventListener('click', flushDriveSync);
