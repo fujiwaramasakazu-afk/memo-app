@@ -859,6 +859,13 @@
     }
   });
 
+  // アプリ/タブを開きっぱなしのまま他端末で編集された場合に備え、一定間隔でもDriveを確認する
+  setInterval(() => {
+    if (accessToken && syncState !== 'syncing' && !pendingDriveUpload) {
+      loadFromDriveOnStartup();
+    }
+  }, 20000);
+
   signInBtn.addEventListener('click', signIn);
   signOutBtn.addEventListener('click', signOut);
   syncNowBtn.addEventListener('click', flushDriveSync);
