@@ -431,9 +431,51 @@
   .move-folder-row:active {
     background: var(--accent-soft);
   }
+
+  /* --- PINロック画面 --- */
+  .lock-view {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .lock-box {
+    width: 100%;
+    max-width: 300px;
+  }
+  .lock-message {
+    font-size: 15px;
+    margin: 0 0 14px;
+    text-align: center;
+    color: var(--ink);
+  }
+  .lock-input {
+    text-align: center;
+    letter-spacing: 6px;
+    font-size: 20px;
+  }
+  .lock-submit-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+  }
 </style>
 </head>
 <body>
+
+<div id="lockView" class="lock-view">
+  <div class="lock-box">
+    <p id="lockMessage" class="lock-message">PINコードを入力してください</p>
+    <input id="lockInput" type="password" inputmode="numeric" class="modal-input lock-input" placeholder="PINコード" autocomplete="off" />
+    <input id="lockConfirmInput" type="password" inputmode="numeric" class="modal-input lock-input hidden" placeholder="もう一度入力" autocomplete="off" />
+    <p id="lockError" class="restore-error hidden"></p>
+    <button id="lockSubmitBtn" class="modal-btn-primary lock-submit-btn">OK</button>
+  </div>
+</div>
 
 <div id="listView">
   <header class="topbar">
@@ -486,6 +528,9 @@
     <div class="settings-actions">
       <button id="backupBtn" class="modal-btn-secondary">バックアップを書き出す</button>
       <button id="restoreBtn" class="modal-btn-secondary">バックアップから復元する</button>
+    </div>
+    <div class="settings-actions">
+      <button id="changePinBtn" class="modal-btn-secondary">PINコードを変更</button>
     </div>
     <div class="modal-actions">
       <button id="settingsCloseBtn" class="modal-btn-secondary">閉じる</button>
@@ -556,6 +601,7 @@
   const settingsCloseBtn = document.getElementById('settingsCloseBtn');
   const backupBtn = document.getElementById('backupBtn');
   const restoreBtn = document.getElementById('restoreBtn');
+  const changePinBtn = document.getElementById('changePinBtn');
   const syncStatusText = document.getElementById('syncStatusText');
   const signInBtn = document.getElementById('signInBtn');
   const signOutBtn = document.getElementById('signOutBtn');
@@ -785,6 +831,9 @@
   }
 
   async function loadFromDriveOnStartup() {
+    // メモ編集中にDriveの内容で丸ごと置き換えると、編集中の内容が消えてしまうため見送る
+    // (編集を終えて一覧に戻った後、次回のタイミングで改めて取り込まれる)
+    if (editingNote) return;
     try {
       setSyncState('syncing');
       if (!driveFileId) {
@@ -1404,8 +1453,101 @@
     render();
   });
 
+  // ---------- PINロック ----------
+  const lockView = document.getElementById('lockView');
+  const lockMessage = document.getElementById('lockMessage');
+  const lockInput = document.getElementById('lockInput');
+  const lockConfirmInput = document.getElementById('lockConfirmInput');
+  const lockError = document.getElementById('lockError');
+  const lockSubmitBtn = document.getElementById('lockSubmitBtn');
+  const PIN_HASH_KEY = 'memoAppPinHash_v1';
+
+  async function sha256Hex(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function isPinConfigured() {
+    return !!localStorage.getItem(PIN_HASH_KEY);
+  }
+
+  function showLockScreen() {
+    lockView.classList.remove('hidden');
+    lockError.classList.add('hidden');
+    lockInput.value = '';
+    lockConfirmInput.value = '';
+    if (isPinConfigured()) {
+      lockMessage.textContent = 'PINコードを入力してください';
+      lockConfirmInput.classList.add('hidden');
+    } else {
+      lockMessage.textContent = 'はじめに使うPINコードを設定してください(4桁以上の数字)';
+      lockConfirmInput.classList.remove('hidden');
+    }
+    setTimeout(() => lockInput.focus(), 50);
+  }
+
+  function hideLockScreen() {
+    lockView.classList.add('hidden');
+  }
+
+  async function handleLockSubmit() {
+    const value = lockInput.value.trim();
+    if (value.length < 4) {
+      lockError.textContent = '4桁以上の数字を入力してください';
+      lockError.classList.remove('hidden');
+      return;
+    }
+    if (isPinConfigured()) {
+      const stored = localStorage.getItem(PIN_HASH_KEY);
+      const hash = await sha256Hex(value);
+      if (hash !== stored) {
+        lockError.textContent = 'PINコードが違います';
+        lockError.classList.remove('hidden');
+        lockInput.value = '';
+        lockInput.focus();
+        return;
+      }
+      hideLockScreen();
+    } else {
+      const confirmValue = lockConfirmInput.value.trim();
+      if (confirmValue !== value) {
+        lockError.textContent = '確認用のPINコードが一致しません';
+        lockError.classList.remove('hidden');
+        lockConfirmInput.value = '';
+        lockConfirmInput.focus();
+        return;
+      }
+      const hash = await sha256Hex(value);
+      localStorage.setItem(PIN_HASH_KEY, hash);
+      hideLockScreen();
+    }
+  }
+
+  lockSubmitBtn.addEventListener('click', handleLockSubmit);
+  lockInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && lockConfirmInput.classList.contains('hidden')) handleLockSubmit();
+  });
+  lockConfirmInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleLockSubmit();
+  });
+
+  changePinBtn.addEventListener('click', () => {
+    settingsOverlay.classList.add('hidden');
+    localStorage.removeItem(PIN_HASH_KEY);
+    showLockScreen();
+  });
+
+  // タブ/アプリが非表示になった瞬間に即ロックする
+  // (ブラウザ履歴のbfcacheスナップショットや、Androidの「最近使ったアプリ」のサムネイルからの覗き見を防ぐため)
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) showLockScreen();
+  });
+  window.addEventListener('pagehide', () => { showLockScreen(); });
+  window.lockApp = showLockScreen; // Android側のonPauseからも呼べるように公開
+
   // ---------- Android実機の戻るボタン対応 ----------
   window.handleAndroidBack = function () {
+    if (!lockView.classList.contains('hidden')) { return true; }
     if (!moveOverlay.classList.contains('hidden')) { closeMovePicker(); return true; }
     if (!restoreOverlay.classList.contains('hidden')) { restoreOverlay.classList.add('hidden'); return true; }
     if (!backupOverlay.classList.contains('hidden')) { backupOverlay.classList.add('hidden'); return true; }
@@ -1419,6 +1561,7 @@
   render();
   updateSyncStatusUI();
   initDriveSync();
+  showLockScreen();
 </script>
 </body>
 </html>
