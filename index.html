@@ -457,6 +457,7 @@
     text-align: center;
     letter-spacing: 6px;
     font-size: 20px;
+    -webkit-text-security: disc;
   }
   .lock-submit-btn {
     width: 100%;
@@ -470,8 +471,8 @@
 <div id="lockView" class="lock-view">
   <div class="lock-box">
     <p id="lockMessage" class="lock-message">PINコードを入力してください</p>
-    <input id="lockInput" type="password" inputmode="numeric" class="modal-input lock-input" placeholder="PINコード" autocomplete="off" />
-    <input id="lockConfirmInput" type="password" inputmode="numeric" class="modal-input lock-input hidden" placeholder="もう一度入力" autocomplete="off" />
+    <input id="lockInput" type="text" inputmode="numeric" class="modal-input lock-input" placeholder="PINコード" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="memoAppLockField1" />
+    <input id="lockConfirmInput" type="text" inputmode="numeric" class="modal-input lock-input hidden" placeholder="もう一度入力" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="memoAppLockField2" />
     <p id="lockError" class="restore-error hidden"></p>
     <button id="lockSubmitBtn" class="modal-btn-primary lock-submit-btn">OK</button>
   </div>
