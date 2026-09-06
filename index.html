@@ -799,6 +799,7 @@
 
   async function driveDownloadFile(fileId) {
     const res = await driveApiFetch(`/drive/v3/files/${fileId}?alt=media`);
+    if (res.status === 404) return { notFound: true };
     if (!res.ok) return null;
     try { return await res.json(); } catch (e) { return null; }
   }
@@ -811,6 +812,12 @@
         headers: { 'Content-Type': 'application/json; charset=UTF-8' },
         body
       });
+      if (res.status === 404) {
+        // 参照先のファイルがDrive側で見つからない(削除された等)ため、参照を破棄して新規作成し直す
+        driveFileId = null;
+        localStorage.removeItem(DRIVE_FILE_ID_KEY);
+        return driveUploadFile(payload);
+      }
       return res.ok;
     }
     const boundary = 'memoapp_' + Date.now().toString(36);
@@ -844,7 +851,20 @@
         }
       }
       if (driveFileId) {
-        const remote = await driveDownloadFile(driveFileId);
+        let remote = await driveDownloadFile(driveFileId);
+        if (remote && remote.notFound) {
+          // 参照していたファイルが見つからないため、参照を破棄して探し直す
+          driveFileId = null;
+          localStorage.removeItem(DRIVE_FILE_ID_KEY);
+          const found = await driveFindFile();
+          if (found) {
+            driveFileId = found.id;
+            localStorage.setItem(DRIVE_FILE_ID_KEY, driveFileId);
+            remote = await driveDownloadFile(driveFileId);
+          } else {
+            remote = null;
+          }
+        }
         if (remote && remote.type === 'folder' && Array.isArray(remote.children)) {
           const remoteUpdated = remote.updatedAt || 0;
           const localUpdated = root.updatedAt || 0;
@@ -857,6 +877,8 @@
           } else {
             await flushDriveSync();
           }
+        } else if (!driveFileId) {
+          await flushDriveSync();
         }
       } else {
         await flushDriveSync();
@@ -1537,13 +1559,10 @@
     showLockScreen();
   });
 
-  // タブ/アプリが非表示になった瞬間に即ロックする
-  // (ブラウザ履歴のbfcacheスナップショットや、Androidの「最近使ったアプリ」のサムネイルからの覗き見を防ぐため)
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) showLockScreen();
-  });
+  // ページを完全に離れる(閉じる/別サイトへ移動する)時だけロックする。
+  // タブの切り替えや最小化だけでは維持する(頻繁なPIN再入力を避けるため)。
   window.addEventListener('pagehide', () => { showLockScreen(); });
-  window.lockApp = showLockScreen; // Android側のonPauseからも呼べるように公開
+  window.lockApp = showLockScreen; // Android側のonPauseからも呼べるように公開(裏に回った瞬間にロック)
 
   // ---------- Android実機の戻るボタン対応 ----------
   window.handleAndroidBack = function () {
